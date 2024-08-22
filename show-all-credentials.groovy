@@ -7,22 +7,39 @@ retrieveCredentials()
 // For instance to retrieve credentials credId_1 and credId_2, just perform
 // such call:
 // retrieveCredentials('credId_1','credId_2')
-  
+
 def retrieveCredentials(String... credIds) {
   def crendentialsProviders = [:]
 
+  // Get system credentials provider
   crendentialsProviders['System'] = Jenkins.instanceOrNull.getExtensionList('com.cloudbees.plugins.credentials.SystemCredentialsProvider')[0]
   
+  // Get User credentials provider
   crendentialsProviders['User'] = User.current().properties.find { k,v ->
     k instanceof com.cloudbees.plugins.credentials.UserCredentialsProvider$UserCredentialsProperty$DescriptorImpl
   }.value
+  
+  // Get Folder credentials providers
+  Jenkins.instance.allItems().findAll { item ->
+    item.getClass().name == 'com.cloudbees.hudson.plugins.folder.Folder' &&
+      item.properties.find { property ->
+        property.getClass().name == 'com.cloudbees.hudson.plugins.folder.properties.FolderCredentialsProvider$FolderCredentialsProperty'
+      }
+  }.each { folder ->
+    crendentialsProviders[(folder.fullName)]=folder.properties.find { property ->
+        property.getClass().name == 'com.cloudbees.hudson.plugins.folder.properties.FolderCredentialsProvider$FolderCredentialsProperty'
+      }
+  }
 
+  // Parse all credentials providers to display credentials matching given credential IDs
   crendentialsProviders.each { providerId, credentialsProvider ->
-    credentialsProvider.domainCredentials.each { domainCredentials ->
-      credentialsProvider.getCredentials(domainCredentials.domain).findAll{ credential ->
-        credIds.size() == 0 || credential.id in credIds
+    // Parse all domain credentials
+    credentialsProvider.domainCredentialsMap.each { domainCredentials,credentials ->
+      // lookup for given credential Ids if any or all of them if not.
+      credentials.findAll{ credential ->        	
+          credIds.size() == 0 || credential.id in credIds
       }.each { credential ->
-        displayCredential("${providerId}:${domainCredentials?.domain?.name?:'global'}",credential)
+          displayCredential("${providerId}:${domainCredentials?.name?:'global'}",credential)
       }
     }
   }
